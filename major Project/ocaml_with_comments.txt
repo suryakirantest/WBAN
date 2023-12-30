@@ -1,0 +1,187 @@
+(*---channels---*)
+(* The protocol defines various channels (free ch, sch1, sch2) for communication *)
+free ch:channel.
+free sch1:channel[private].
+free sch2:channel[private].
+
+
+(*Encryption and Decryption*)
+(* The code defines two types: beta and alpha. These types are likely used to represent cryptographic keys. *)
+(* They take a bitstring and a corresponding cryptographic key and return the encrypted/decrypted bitstring. *)
+type beta.    (* beta for enc *)
+type alpha.    (* alpha for dec *)
+fun enc(bitstring,beta):bitstring.
+fun dec(bitstring,alpha):bitstring.
+equation forall m:bitstring,k1:beta,k2:alpha; dec(enc(m,k1),k2)=m. (* Equation representing decryption of encrypted data must result in the original data. *)
+
+
+(*---session keys---*)
+free sku:bitstring[private].(* sku represents private session keys for users nodes *)
+free sks:bitstring[private].(* sks represents private session keys for sensor nodes *)
+
+
+(*---User's Secret Keys---*)
+(* Shared between user and gateway, play a crucial role in ensuring secure communication between the user and the gateway. *)
+free Ualpha:bitstring[private]. (* User's private alpha key *)
+free Ubeta:bitstring. (* User's public beta key *)
+free K:bitstring[private]. (* K is a shared secret key between the user and the gateway, essential for secure communication and message authentication. *)
+free A2:bitstring[private]. (* A2 is an intermediate value used in the user authentication process to ensure user legitimacy and authorization. *)
+
+
+(*---Gateway's Secret Keys---*)
+free Galpha:alpha[private]. (* Galpha is a secret key unique to the gateway *)
+free Gbeta:beta. (* Gbeta is a secret key shared between the gateway and the users/sensor nodes *)
+free L:bitstring[private]. (* L is shared between sensor nodes and gateways *)
+
+
+(*---Sensor Node's Secret Keys 20---*)
+free Salpha:bitstring[private]. (* Sensor node's private alpha key *)
+free Sbeta:bitstring. (* Sensor node's public beta key *)
+free A5:bitstring[private]. (* A5 is an intermediate value shared between sensor node and gateway *)
+
+
+(*---constants---*)
+const P:bitstring.(**)
+free UIDi:bitstring[private]. (* A private bitstring representing the user's identifier, used to uniquely identify a user. *)
+free PWi:bitstring[private]. (* A private bitstring representing the user's password for authentication credentials. *)
+free BIOi:bitstring[private]. (* A private bitstring representing the user's biometric data (e.g., fingerprint, iris scan) used for authentication. *)
+free HBi:bitstring[private]. (* A private bitstring representing the hash of the user's biometric data *)
+const SIDj:bitstring.(* it is used to uniquely identify a sensor node. *)
+const GIDj:bitstring.(* it is used to uniquely identify a gateway. *)
+(* user, sensor, and gateway are tables that store information about users, sensor nodes, and gateways, respectively *)
+table user(bitstring).
+table sensor(bitstring).
+table gateway(bitstring).
+
+
+(*---functions---*)
+fun h(bitstring):bitstring. (* hash function: Hash functions take an arbitrary-length bitstring as input and produce a fixed-size output (hash value). *)
+fun ecpm(bitstring,bitstring):bitstring. (* elliptic curve point multiplication: Inputs - Two bitstrings, possibly representing points on an elliptic curve. Output - A bitstring representing the result of the elliptic curve point multiplication operation. *)
+fun ecpa(bitstring,bitstring):bitstring. (* elliptic curve point addition: Inputs - Two bitstrings, possibly representing points on an elliptic curve. Output - A bitstring representing the result of the elliptic curve point arithmetic operation. *)
+fun mul(bitstring,bitstring):bitstring. (* mathematical multiplication: Inputs - Two bitstrings representing numbers or mathematical values. Output - A bitstring representing the result of the multiplication. *)
+fun add(bitstring,bitstring):bitstring. (* mathematical addition: Inputs - Two bitstrings representing numbers or mathematical values. Output - A bitstring representing the result of the addition. *)
+fun con(bitstring,bitstring,bitstring):bitstring.(* string concatenation: String concatenation is used to merge multiple bitstrings into a single bitstring. *)
+fun con1(bitstring,bitstring):bitstring.(* string concatenation *)
+fun con2(bitstring,beta,bitstring):bitstring. (* string concatenation *)
+fun con3(bitstring,beta):bitstring. (* string concatenation *)
+
+
+(*---queries---*)
+query attacker(sku).
+query attacker(sks).
+query id:bitstring;inj-event(UserAuth(id))==>
+inj-event(UserStart(id)).
+(* Queries and events for checking security vulnerabilities and attacker scenarios. *)
+
+
+(*---event---*)
+event UserStart(bitstring).
+event UserAuth(bitstring).
+(* Events used for user authentication and user start events. *)
+
+
+(*--user process*)
+let User=
+new b:bitstring; (* Variable to store a new bitstring *)
+let A1 = h(con1(con(UIDi,PWi,BIOi),HBi)) in (* Calculate A1 using hash function on a concatenated bitstring *)
+let B = ecpm(b,P) in (* Calculate B using elliptic curve point multiplication *)
+let N1 = h(con1(con2(GIDj,Gbeta,K),B)) in (* Calculate N1 using hash function on a concatenated bitstring *)
+let N2 = ecpm(A1,P) in (* Calculate N2 using elliptic curve point multiplication *)
+let A2 = h(con(N1,N2,K)) in (* Calculate A2 using hash function on a concatenated bitstring *)
+out(sch1,(enc(A2,Gbeta),enc(N2,Gbeta),enc(B,Gbeta))); (* Send encrypted values over the secure channel *)
+in(sch1,(A3:bitstring,A4:bitstring)); (* Receive bitstrings A3 and A4 from the channel *)
+let A4'=h(con(A3,B,K)) in (* Calculate A4' using hash function on a concatenated bitstring *)
+if A4=A4' then (* Check if A4 matches A4' *)
+let Ualpha=h(con(b,A1,A3)) in (* Calculate Ualpha using hash function on a concatenated bitstring *)
+insert user(A2); (* Insert A2 into the user table *)
+!
+(
+event UserStart (UIDi); (* Trigger UserStart event with UIDi *)
+new T1:bitstring; (* Variable to store a new bitstring *)
+let I1=h(con(A2,K,Ubeta)) in (* Calculate I1 using hash function on a concatenated bitstring *)
+let I2=h(con(I1,T1,B)) in (* Calculate I2 using hash function on a concatenated bitstring *)
+out(ch,(I2,B,T1)); (* Send I2, B, and T1 over the regular channel *)
+in(ch,(I8:bitstring,D:bitstring,T4:bitstring)); (* Receive I8, D, and T4 from the channel *)
+new T5:bitstring; (* Variable to store a new bitstring *)
+let I7'=h(con2(A2,Gbeta,K)) in (* Calculate I7' using hash function on a concatenated bitstring *)
+let I8'=h(con(I7',T4,D)) in (* Calculate I8' using hash function on a concatenated bitstring *)
+if I8'=I8 then (* Check if I8 matches I8' *)
+let SKu=ecpa(ecpm(b,Sbeta),ecpm(D,Ualpha)) in (* Calculate SKu using elliptic curve point operations *)
+0 (* Return 0, end of the User process *)
+).
+
+(*--sensor process*)
+let Sensor=
+new d:bitstring; (* Variable to store a new bitstring *)
+let D=ecpm(d,P) in (* Calculate D using elliptic curve point multiplication *)
+let A5=h(con3(SIDj,Gbeta)) in (* Calculate A5 using hash function on a concatenated bitstring *)
+let A6=h(con(A5,D,L)) in (* Calculate A6 using hash function on a concatenated bitstring *)
+out(sch2,(A5,A6,D)); (* Send A5, A6, and D over the secure channel *)
+in(sch2,(A7:bitstring,A8:bitstring)); (* Receive bitstrings A7 and A8 from the channel *)
+let A8'=h(con1(con(A7,A6,D),L)) in (* Calculate A8' using hash function on a concatenated bitstring *)
+if A8'=A8 then (* Check if A8 matches A8' *)
+let Salpha=h(con(d,A5,A7)) in (* Calculate Salpha using hash function on a concatenated bitstring *)
+let Sbeta=ecpm(Salpha,P) in (* Calculate Sbeta using elliptic curve point multiplication *)
+insert sensor(A5); (* Insert A5 into the sensor table *)
+!
+(
+in(ch,(I4:bitstring,B:bitstring,T2:bitstring)); (* Receive I4, B, and T2 from the regular channel *)
+new T3:bitstring;(*110*) (* Variable to store a new bitstring *)
+let I3'=h(con2(A5,Gbeta,L)) in (* Calculate I3' using hash function on a concatenated bitstring *)
+let I4'=h(con(I3',T2,B)) in (* Calculate I4' using hash function on a concatenated bitstring *)
+if I4'=I4 then (* Check if I4 matches I4' *)
+let I5=h(con1(con(GIDj,L,Sbeta),I3')) in (* Calculate I5 using hash function on a concatenated bitstring *)
+let I6= h(con1(con(I5,T3,D),B)) in (* Calculate I6 using hash function on a concatenated bitstring *)
+out(ch,(I6,D,T3)); (* Send I6, D, and T3 over the regular channel *)
+let SKs=ecpa(ecpm(d,Ubeta),ecpm(B,Salpha)) in (* Calculate SKs using elliptic curve point operations *)
+0 (* Return 0, end of the Sensor process *)
+).
+
+
+(*---Gateway's process---*)
+let GWNReg1 = 
+in(sch1,(X:bitstring,Y:bitstring,Z:bitstring)); (* Receive bitstrings X, Y, and Z from the secure channel *)
+let x = dec(X,Galpha) in (* Decrypt X using Galpha *)
+let y = dec(Y,Galpha) in (* Decrypt Y using Galpha *)
+let z = dec(Z,Galpha) in (* Decrypt Z using Galpha *)
+let N1' = h(con1(con2(GIDj,Gbeta,K),z)) in (* Calculate N1' using hash function on a concatenated bitstring *)
+let A2' = h(con(N1',y,K)) in (* Calculate A2' using hash function on a concatenated bitstring *)
+if A2'=x then (* Check if A2 matches A2' *)
+new c:bitstring; (* Variable to store a new bitstring *)
+let C = ecpa(ecpm(c,P),ecpm(K,P)) in (* Calculate C using elliptic curve point operations *)
+let A3 = h(con(GIDj,C,A2')) in (* Calculate A3 using hash function on a concatenated bitstring *)
+let A4 = h(con(A3,z,K)) in (* Calculate A4 using hash function on a concatenated bitstring *)
+insert gateway(A2'); (* Insert A2 into the gateway table *)
+out(sch1,(A3,A4)). (* Send A3 and A4 over the secure channel *)
+let GWNReg2 = 
+in(sch2,(A6:bitstring,A5:bitstring,D:bitstring)); (* Receive bitstrings A6, A5, and D from the secure channel *)
+let A6' = h(con(A5,D,L)) in (* Calculate A6' using hash function on a concatenated bitstring *)
+if A6' = A6 then (* Check if A6 matches A6' *)
+new e:bitstring; (* Variable to store a new bitstring *)
+let E=ecpa(ecpm(e,P),ecpm(L,P)) in (* Calculate E using elliptic curve point operations *)
+let A7=h(con(GIDj,E,A5)) in (* Calculate A7 using hash function on a concatenated bitstring *)
+let A8=h(con1(con(A7,A6,D),L)) in (* Calculate A8 using hash function on a concatenated bitstring *)
+insert gateway(A5); (* Insert A5 into the gateway table *)
+out(sch2,(A7,A8)). (* Send A7 and A8 over the secure channel *)
+
+let GWNAuth = 
+in(ch,(I2:bitstring,B:bitstring,T1:bitstring)); (* Receive I2, B, and T1 from the regular channel *)
+new T2:bitstring;(*148*) (* Variable to store a new bitstring *)
+let I1'=h(con(A2,K,Ubeta)) in (* Calculate I1' using hash function on a concatenated bitstring *)
+let I2'=h(con(I1',T1,B)) in (* Calculate I2' using hash function on a concatenated bitstring *)
+if I2'=I2 then (* Check if I2 matches I2' *)
+event UserAuth(UIDi); (* Trigger UserAuth event with UIDi *)
+let I3=h(con2(A5,Gbeta,L)) in (* Calculate I3 using hash function on a concatenated bitstring *)
+let I4=h(con(I3,T2,B)) in (* Calculate I4 using hash function on a concatenated bitstring *)
+out(ch,(I4,B,T2)); (* Send I4, B, and T2 over the regular channel *)
+in(ch,(I6:bitstring,D:bitstring,T3:bitstring)); (* Receive I6, D, and T3 from the regular channel *)
+new T4:bitstring; (* Variable to store a new bitstring *)
+let I5'=h(con1(con(GIDj,L,Sbeta),I3)) in (* Calculate I5' using hash function on a concatenated bitstring *)
+let I6'=h(con1(con(I5',T3,D),B)) in (* Calculate I6' using hash function on a concatenated bitstring *)
+if I6'=I6 then (* Check if I6 matches I6' *)
+let I7=h(con2(A2,Gbeta,K)) in (* Calculate I7 using hash function on a concatenated bitstring *)
+let I8=h(con(I7,T4,D)) in (* Calculate I8 using hash function on a concatenated bitstring *)
+out(ch,(I8,D,T4)). (* Send I8, D, and T4 over the regular channel *)
+let GWN = GWNReg1|GWNReg2|GWNAuth. (* Combine the Gateway processes *)
+process!User|!GWN|!Sensor (* Combine all processes: User, Gateway, and Sensor *) 
+
